@@ -1,98 +1,109 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import { authAPI } from '../api/auth';
+"use client"
 
-const AuthContext = createContext();
+import { createContext, useContext, useState, useEffect } from "react"
+import { loginUser, registerUser, logoutUser, getCurrentUser, isAuthenticated } from "../api/auth.js"
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth debe ser usado dentro de AuthProvider');
-  }
-  return context;
-};
+const AuthContext = createContext()
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  // Verificar si hay token al cargar la app
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      loadUser();
-    } else {
-      setLoading(false);
+    const initAuth = () => {
+      try {
+        if (isAuthenticated()) {
+          const currentUser = getCurrentUser()
+          setUser(currentUser)
+          console.log("👤 Usuario autenticado:", currentUser)
+        }
+      } catch (error) {
+        console.error("Error al inicializar auth:", error)
+        // Limpiar datos corruptos
+        logoutUser()
+      } finally {
+        setLoading(false)
+      }
     }
-  }, []);
 
-  // Cargar datos del usuario
-  const loadUser = async () => {
-    try {
-      const response = await authAPI.getProfile();
-      setUser(response.user);
-      setIsAuthenticated(true);
-    } catch (error) {
-      console.error('Error cargando usuario:', error);
-      localStorage.removeItem('token');
-    } finally {
-      setLoading(false);
-    }
-  };
+    initAuth()
+  }, [])
 
-  // Función de login
   const login = async (credentials) => {
     try {
-      const response = await authAPI.login(credentials);
-      localStorage.setItem('token', response.token);
-      setUser(response.user);
-      setIsAuthenticated(true);
-      return { success: true, user: response.user };
-    } catch (error) {
-      console.error('Error en login:', error);
-      return { 
-        success: false, 
-        message: error.response?.data?.message || 'Error en el login' 
-      };
-    }
-  };
+      setLoading(true)
+      setError(null)
+      console.log("🔐 Intentando login...")
 
-  // Función de registro
+      const response = await loginUser(credentials)
+
+      if (response.success) {
+        setUser(response.user)
+        console.log("✅ Login exitoso:", response.user)
+        return { success: true, user: response.user }
+      } else {
+        throw new Error(response.message || "Error en el login")
+      }
+    } catch (err) {
+      console.error("❌ Error en login:", err)
+      const errorMessage = err.message || "Error al iniciar sesión"
+      setError(errorMessage)
+      return { success: false, message: errorMessage }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const register = async (userData) => {
     try {
-      const response = await authAPI.register(userData);
-      localStorage.setItem('token', response.token);
-      setUser(response.user);
-      setIsAuthenticated(true);
-      return { success: true, user: response.user };
-    } catch (error) {
-      console.error('Error en registro:', error);
-      return { 
-        success: false, 
-        message: error.response?.data?.message || 'Error en el registro' 
-      };
-    }
-  };
+      setLoading(true)
+      setError(null)
+      console.log("📝 Intentando registro...")
 
-  // Función de logout
+      const response = await registerUser(userData)
+
+      if (response.success) {
+        setUser(response.user)
+        console.log("✅ Registro exitoso:", response.user)
+        return { success: true, user: response.user }
+      } else {
+        throw new Error(response.message || "Error en el registro")
+      }
+    } catch (err) {
+      console.error("❌ Error en registro:", err)
+      const errorMessage = err.message || "Error al registrarse"
+      setError(errorMessage)
+      return { success: false, message: errorMessage }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-    setIsAuthenticated(false);
-  };
+    logoutUser()
+    setUser(null)
+    setError(null)
+    console.log("👋 Usuario desconectado")
+  }
 
   const value = {
     user,
-    loading,
-    isAuthenticated,
     login,
     register,
     logout,
-  };
+    loading,
+    error,
+    isAuthenticated: !!user,
+  }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (!context) {
+    throw new Error("useAuth debe ser usado dentro de AuthProvider")
+  }
+  return context
+}
